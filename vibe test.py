@@ -14,6 +14,7 @@ N = 20
 R = 20
 _min = 2
 phai = 16
+print(image.shape)
 
 samples = vibe.initial_background(image, N)
 
