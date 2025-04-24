@@ -10,16 +10,24 @@ from basic_functions import basic_functions as bf
 
 
 class FrameStatus(Flag):
-    RGB = auto()
+    """
+    Класс с флагами состояний кадра:
+    RGB, GRAY, SHRINKED, MASKED, BLURRED, OBJECT_CHECKED
+    Используется во внутренних функциях
+    """
+    RGB = 0
     GRAY = auto()
     SHRINKED = auto()
     MASKED = auto()
     BLURRED = auto()
-    MOTION_CHECKED = auto()
+    OBJECT_CHECKED = auto()
 
 class Frame:
+    """
+    Класс отдельного кадра видео. Содержит расширенную информацию помимо изображения из видео.
+    """
     def __init__(self, frame : ndarray, fr_num : int):
-        self._motion = False
+        self._object_present = False
         self._mask = None
         self._image = frame
         self._fr_num = fr_num
@@ -57,36 +65,64 @@ class Frame:
 
     @property
     def status(self) -> FrameStatus:
+        """
+        :return: Флаги статуса кадра
+        """
         return self.__status
 
     @property
     def image(self) -> np.ndarray:
+        """
+        :return: Изображение карда
+        """
         return self._image
 
     @property
     def fr_num(self) -> int:
+        """
+        :return: Номер кадра
+        """
         return self._fr_num
 
     @property
     def image_size(self) -> Tuple[int, int]:
+        """
+        :return: Размеры изображения
+        """
         return self._image.shape[0:2]
 
     @property
     def mask(self) -> ndarray:
+        """
+        :return: Возвращает маску объекта на изображении.
+        Если маска еще не задавалась, возвращает копию изображения.
+        """
         if self._mask is None:
             return np.copy(self._image)
         return self._mask
 
     @property
-    def motion(self) -> bool:
-        return self._motion
+    def object_present(self) -> bool:
+        """
+        :return: возвращает статус присутствия объекта на изображении
+        """
+        return self._object_present
 
-    def to_grayscale(self):
+    def to_grayscale(self) -> 'Frame':
+        """
+        Конвертирует изображение в оттенки серого, устанавливает флаг GRAY
+        :return: self
+        """
         self._image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        self.__status = FrameStatus.GRAY
+        self.__status |= FrameStatus.GRAY
         return self
 
     def resize(self, dims : Tuple[int, int]) -> 'Frame':
+        """
+        Приводит изображение и мастку объекта к заданному размеру, устанавливает флаг SHRINKED при уменьшении
+        :param dims: Размеры нового изображения
+        :return: self
+        """
         if self._image.shape[0] > dims[0] and self._image.shape[1] > dims[1]:
             self.__status |= FrameStatus.SHRINKED
 
@@ -95,7 +131,12 @@ class Frame:
             self._mask = bf.resize(self._mask, dims[1], dims[0])
         return self
 
-    def median_blur(self, blur_image = False):
+    def median_blur(self, blur_image : bool = False):
+        """
+        Производит медианную фильтрацию маски, устанавливает флаг BLURRED
+        :param blur_image: При true фильтрует и само изображение
+        :return: self
+        """
         if blur_image:
             self._image = bf.blur(self._image, 7, 2)
             self.__status |= FrameStatus.BLURRED
@@ -107,21 +148,35 @@ class Frame:
         return self
 
     def add_mask(self, mask : ndarray) -> 'Frame':
+        """
+        Привязывает к кадру маску объекта, содержащегося на кадре, и устанавливает флаг MASKED
+        :param mask: Маска объекта
+        :return: self
+        """
         self._mask = mask
         self.__status |= FrameStatus.MASKED
         return self
 
     def count_new_pixels(self) -> int:
+        """
+        Производит подсчет белых пикселей маски
+        :return: количество значимых пикселей; -1 если маска не задана
+        """
         if self.__status & FrameStatus.MASKED:
             return np.sum(self.mask)
         else:
             return -1
 
-    def check_motion(self, thresh) -> bool:
+    def check_object_presence(self, thresh : int) -> bool:
+        """
+        Определяет наличие объекта на кадре с помощью его маски, устанавливает флаг OBJECT_CHECKED
+        :param thresh: количество значимых пикселей маски, при котором будет определяться присутствие объекта
+        :return: True или FALSE -- статус наличия объекта на кадре
+        """
         if self.__status & FrameStatus.MASKED:
-            self.__status |= FrameStatus.MOTION_CHECKED
-            self._motion = np.sum(self.mask) > thresh
-            return self._motion
+            self.__status |= FrameStatus.OBJECT_CHECKED
+            self._object_present = np.sum(self.mask) > thresh
+            return self._object_present
         else:
             return False
 

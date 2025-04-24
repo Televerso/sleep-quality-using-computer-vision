@@ -17,17 +17,22 @@ print(record.get_total_cap_framecount())
 record.set_cap_to_last_frame()
 record.add_next_frame()
 record.set_cap_to_first_frame()
-record.read_cap_frames(3)
+record.read_cap_frames(2)
 
-record.prosess_frames((120,80), 0.03, 5, 0.01)
+record.prosess_frames((120,80), 0.01, 3, 0.02)
 
 record.save_frames("Test_class_f")
 record.save_masks("Test_class_m")
-record.save_motion_masks("Test_motions")
+save_frames_list(record.motion_masks_list, f"{rootDir}/Test_motions")
+
 record.close_video()
 
-list_objects = record.detect_object_frames(0.03)
-list_motions = record.detect_motion(5, 0.01)
+list_objects = record.detect_object_frames(0.01)
+list_motions = record.detect_motion(5, 0.03)
 
 print(list_objects)
 print(list_motions)
+
+list_keyframes = record.get_motion_frames()
+list_key_masks = [frame.mask for frame in list_keyframes]
+save_frames_list(list_key_masks, f"{rootDir}/Test_keyframes")
