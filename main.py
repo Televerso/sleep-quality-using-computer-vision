@@ -2,72 +2,32 @@ import numpy as np
 import os
 import cv2
 from PIL import Image
+
+from FrameClass.FrameClass import *
 from ViBe import vibe
 from basic_functions import basic_functions as bf
+from SleepTranscription.SleepTranscription import *
 
-rootDir = r'Moving vid'
-maskDir = r'Vid masks'
+rootDir = "Moving vid"
 
-# image_file = os.path.join(rootDir, os.listdir(rootDir)[0])
-# image = cv2.imread(image_file, 0)
-#
-# mask_file = os.path.join(maskDir, os.listdir(maskDir)[0])
-# mask = cv2.imread(image_file, 0)
+record = SleepTranscription(rootDir)
+record.open_videofile("video.mp4")
 
-cap = cv2.VideoCapture(rootDir+r'/video.mp4')
-# Check if the video was opened successfully
-if not cap.isOpened():
-    print("Error: Could not open video file.")
-else:
-    print("Video file opened successfully!")
+print(record.get_total_cap_framecount())
+record.set_cap_to_last_frame()
+record.add_next_frame()
+record.set_cap_to_first_frame()
+record.read_cap_frames(3)
 
+record.prosess_frames((120,80), 0.03, 5, 0.01)
 
-N = 20
-R = 20
-_min = 2
-phai = 16
+record.save_frames("Test_class_f")
+record.save_masks("Test_class_m")
+record.save_motion_masks("Test_motions")
+record.close_video()
 
-cap.set(1,int(cap.get(cv2.CAP_PROP_FRAME_COUNT))-1)
+list_objects = record.detect_object_frames(0.03)
+list_motions = record.detect_motion(5, 0.01)
 
-ret, frame = cap.read()
-gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-scaled = cv2.resize(gray, dsize=(360, 240), interpolation=cv2.INTER_NEAREST)
-samples = vibe.initial_background(scaled, N)
-
-cap.set(1,0)
-
-mask_list = list()
-while ret:
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    scaled = cv2.resize(gray, dsize=(360, 240), interpolation=cv2.INTER_NEAREST)
-    segMap, samples = vibe.vibe_detection(scaled, samples, _min, N, R)
-    segMap = bf.blur(segMap, 7, 2)
-    cv2.imshow('segMap', segMap)
-    if cv2.waitKey(1) and 0xff == ord('q'):
-        break
-
-
-    mask_list.append(segMap)
-    ret, frame = cap.read()
-
-
-
-
-cv2.destroyAllWindows()
-
-img_num = 0
-for mask in mask_list:
-    outfile = os.path.join(maskDir, f'/{img_num}.png')
-    print(outfile)
-    img_num += 1
-    image = Image.fromarray(mask)
-    image.save(outfile)
-
-
-# for masks in os.listdir(maskDir):
-#     path = os.path.join(maskDir, masks)
-#     frame = cv2.imread(path)
-#     cv2.imshow('frame', bf.blur(frame,7, 2))
-#     cv2.waitKey(0)
-
-cap.release()
+print(list_objects)
+print(list_motions)
