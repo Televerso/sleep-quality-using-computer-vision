@@ -24,10 +24,10 @@ class sleep_time():
         pass
 
 class SleepState:
-    def __init__(self, mov_masks, is_moved, is_present, starting_time, framerate = 1, epoch_len = 30):
-        self.mov_masks = mov_masks
+    def __init__(self, pose_list, is_moved, is_present, starting_time, framerate = 1, epoch_len = 30):
         self.is_moved = is_moved
         self.is_present = is_present
+        self.poses = pose_list
 
         self.stage_array = np.array((len(is_moved)))
         self.stage_dict = dict()
@@ -113,22 +113,26 @@ class SleepState:
     def _calc_NREM(self):
         return np.sum(self.stage_array[:]=="NREM")
 
-    def get_sleeping_score(self, Am=8.5, Ap=8.5, Aw = 2):
+    def _count_Pose(self):
+        counts, vals = np.unique(self.poses, return_counts=True)
+        return np.max(counts)
+
+    def get_sleeping_score(self, Am=8.5, Ap=8.5, Aw = 2 , alpha = 1, beta = 1, gamma = 0.5):
         TST = self._calc_TST()
         TR = self._calc_REM()
         TW = self._calc_WAKE()
         TNR = self._calc_NREM()
         A = self._calc_N_WAKE()
         NR = self._calc_N_REM()
+        P = self._count_Pose() # most_frequent_pose
 
         a_val = (Am/Ap)**2
-
         scores1 = (TST*a_val + TNR*a_val*1.5 + TR*a_val*0.5 - TW*a_val*0.5 - A/Aw)*Ap
 
         scores2 = (NR+A)/TST
 
-        # scores3 = (TNR/TST)*alpha + 100*beta + P*gamma
-        return scores1, scores2
+        scores3 = (TNR/TST)*alpha + 100*beta + P*gamma
+        return scores1, scores2, scores3
 
 
 

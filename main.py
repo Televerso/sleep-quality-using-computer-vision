@@ -23,7 +23,7 @@ record.prosess_frames((120,80), 0.01, 3, 0.02)
 
 record.save_frames("Test_class_f")
 record.save_masks("Test_class_m")
-save_frames_list(record.motion_masks_list, f"{rootDir}/Test_motions")
+save_frames_list(record.motion_images_list, f"{rootDir}/Test_motions")
 
 record.close_video()
 

@@ -22,7 +22,7 @@ def blur(img, ksize, mode):
     if mode == "average" or mode == 0:
         return cv2.blur(img, (ksize,ksize))
     elif mode == "gaussian" or mode == "gaussian_blur" or mode == 1:
-        return cv2.GaussianBlur(img, ksize, 0)
+        return cv2.GaussianBlur(img, (ksize, ksize), 0)
     elif mode == "median" or mode == "median_blur" or mode == 2:
         return cv2.medianBlur(img, ksize)
 

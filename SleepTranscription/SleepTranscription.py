@@ -5,9 +5,9 @@ import cv2
 import numpy as np
 
 from FrameClass.FrameClass import Frame
+from SleepPoseClassification.SleepPoseClassifyer import SleepPoseClassifyer
 from ViBe import vibe
 from basic_functions import basic_functions as bf
-
 
 def save_frames_list(frames, path : str):
     """
@@ -29,8 +29,9 @@ class SleepTranscription:
         self.curr_cap_frame = 0
         self.frame_list = list()
 
-        self.motion_masks_list = list()
+        self.motion_images_list = list()
         self.motion_detection_list = list()
+        self.pose_list = list()
 
         self.root = rootDir
 
@@ -220,7 +221,7 @@ class SleepTranscription:
         :return:
         """
         new_pixel_thresh = int(255*self.frame_list[0].image_size[0] * self.frame_list[0].image_size[1] * threshold)
-        self.motion_masks_list = list()
+        self.motion_images_list = list()
         self.motion_detection_list = list()
 
         for i in range(len(self.frame_list)):
@@ -229,10 +230,21 @@ class SleepTranscription:
                 n_iter = i
             frame = np.zeros_like(self.frame_list[i].mask)
             for j in range(0, n_iter):
-                frame |= self.frame_list[i-j].mask ^ self.frame_list[i].mask
-            self.motion_masks_list.append(frame)
+                frame |= self.frame_list[i].mask ^ self.frame_list[i-j].mask
+            self.motion_images_list.append(frame)
             self.motion_detection_list.append(np.sum(frame) > new_pixel_thresh)
         return self.motion_detection_list
+
+
+    def classify_poses(self):
+        sleep_model = SleepPoseClassifyer()
+        obj_masks = list()
+        for frame in self.frame_list:
+            if frame.object_present:
+                obj_masks.append(cv2.cvtColor(bf.resize(frame.mask,64,64),cv2.COLOR_GRAY2RGB))
+        self.pose_list = sleep_model.batch_classify(obj_masks)
+
+        return self.pose_list
 
 
     def prosess_frames(self, dims : Tuple[int,int], thresh_object : float, n : int, thresh_motion : float) ->\
@@ -251,6 +263,8 @@ class SleepTranscription:
         self.blur_frames()
         self.detect_object_frames(thresh_object)
         self.detect_motion(n, thresh_motion)
+        self.classify_poses()
+
         return self
 
 

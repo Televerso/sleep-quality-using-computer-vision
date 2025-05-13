@@ -65,7 +65,7 @@ class SleepNet(tf.keras.Model):
         return x
 
 
-class SleepPoseClassifyer():
+class SleepPoseClassifyer:
     def __init__(self):
 
         channel_1 = 32
@@ -81,11 +81,11 @@ class SleepPoseClassifyer():
         self.model.compile(optimizer='rmsprop',loss='sparse_categorical_crossentropy',metrics=[tf.keras.metrics.sparse_categorical_accuracy])
         self.model.fit(np.array(test_image), np.array(test_labels), epochs=1, batch_size=1)
 
-        self.model.load_weights('SleepNetModelv2_95.weights.h5')
+        self.model.load_weights('SleepPoseClassification/SleepNetModelv2_95.weights.h5')
 
 
     def batch_classify(self, images):
-        return self.model.predict(np.array(images,dtype=np.float32)) # np.argmax()
+        return np.argmax(self.model.predict(np.array(images,dtype=np.float32)), axis=-1)
 
 
 if __name__ == '__main__':
@@ -94,6 +94,6 @@ if __name__ == '__main__':
     image3 = cv2.imread('Dataset/Test/supine/777.png')
 
     model = SleepPoseClassifyer()
-    identity_matr = model.batch_classify([image1,image2,image3])
+    identity_matr = model.batch_classify([image2,image1,image3])
 
     print(np.round(identity_matr,0))
