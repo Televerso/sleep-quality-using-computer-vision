@@ -83,9 +83,10 @@ class SleepPoseClassifyer:
 
         self.model.load_weights('SleepPoseClassification/SleepNetModelv2_95.weights.h5')
 
-
     def batch_classify(self, images):
         return np.argmax(self.model.predict(np.array(images,dtype=np.float32)), axis=-1)
+
+
 
 
 if __name__ == '__main__':

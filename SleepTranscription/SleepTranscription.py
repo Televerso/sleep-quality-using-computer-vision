@@ -241,9 +241,9 @@ class SleepTranscription:
         obj_masks = list()
         for frame in self.frame_list:
             if frame.object_present:
-                obj_masks.append(cv2.cvtColor(bf.resize(frame.mask,64,64),cv2.COLOR_GRAY2RGB))
+                obj_masks.append(bf.get_64pix_mask(frame.mask))
         self.pose_list = sleep_model.batch_classify(obj_masks)
-
+        save_frames_list(obj_masks, r"C:\Users\dboga\PycharmProjects\sleep quality using computer vision\Moving vid\Test_64")
         return self.pose_list
 
 

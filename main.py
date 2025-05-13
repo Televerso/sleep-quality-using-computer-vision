@@ -29,9 +29,10 @@ record.close_video()
 
 list_objects = record.detect_object_frames(0.01)
 list_motions = record.detect_motion(5, 0.03)
-
+list_poses = record.pose_list
 print(list_objects)
 print(list_motions)
+print(list_poses)
 
 list_keyframes = record.get_motion_frames()
 list_key_masks = [frame.mask for frame in list_keyframes]
