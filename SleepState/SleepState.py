@@ -7,42 +7,93 @@ import numpy as np
 from FrameClass.FrameClass import Frame
 from SleepTranscription import SleepTranscription
 from basic_functions import basic_functions as bf
-import time
-from datetime import datetime
 from collections import Counter
 
-class sleep_time():
-    def __init__(self, year, month, day, hour, minute, second):
-        self.year = year
-        self.month = month
-        self.day = day
-        self.hour = hour
-        self.minute = minute
-        self.second = second
+class SleepTime:
+    def __init__(self, hour, minute, second):
+        self.hour = int(hour)
+        self.minute = int(minute)
+        self.second = int(second)
+
+        self.in_seconds = second + minute*60 + hour*3600
+
+    def __add__(self, other):
+        hour, minute, second, in_seconds = 0,0,0,0
+        if type(other) is SleepTime:
+            hour = (other.hour + self.hour) % 24
+            minute = (other.minute + self.minute) % 60
+            second = (other.second + self.second) % 60
+
+        elif type(other) is int or type(other) is float:
+            in_seconds = (other + self.in_seconds) % (3600*24)
+
+            hour = self.in_seconds // 3600
+            minute = (self.in_seconds // 60) % 60
+            second = self.in_seconds % 3600
+        else:
+            assert "Wrong datatype!"
+
+        return SleepTime(hour, minute, second)
+
+    def __sub__(self, other):
+        hour, minute, second, in_seconds = 0,0,0,0
+        if type(other) is SleepTime:
+            hour = (self.hour - other.hour) % 24
+            minute = (self.minute -  other.minute) % 60
+            second = (self.second - other.second) % 60
+
+        elif type(other) is int or type(other) is float:
+            in_seconds = (self.in_seconds - other) % (3600*24)
+
+            hour = self.in_seconds // 3600
+            minute = (self.in_seconds // 60) % 60
+            second = self.in_seconds % 3600
+        else:
+            assert "Wrong datatype!"
+
+        return SleepTime(hour, minute, second)
+
+    def __str__(self):
+        res_str = ''
+        res_str += self.hour
+        res_str += ':'
+        res_str += self.minute
+        res_str += ':'
+        res_str += self.second
+        res_str += " - ("
+        res_str += self.in_seconds
+        res_str += "s)"
+
+        return res_str
 
     def to_struct_time(self):
         pass
 
 class SleepState:
-    def __init__(self, pose_list, is_moved, is_present, starting_time, framerate = 1, epoch_len = 30):
-        self.is_moved = is_moved
+    def __init__(self, pose_list, movement_intensity, is_present, starting_time, framerate = 1, epoch_len = 30, movement_threshhold = 0.01):
+        self.movement_intensity = movement_intensity
         self.is_present = is_present
         self.poses = pose_list
 
-        self.stage_array = np.array((len(is_moved)))
+        self.stage_array = np.array((len(movement_intensity)))
         self.stage_dict = dict()
         self.epoch_len = epoch_len
 
         self.starting_time = starting_time
-        self.sleep_duration_in_sec = starting_time - len(is_moved)/framerate
+        self.record_len_in_sec = int(len(movement_intensity)/framerate)
 
-    def _count_movments(self):
+        self.calc_sleep_stage(movement_threshhold)
+        self._get_stage_dict()
+
+        self.sleep_duration_in_sec = self.record_len_in_sec - int(len(self.stage_array[self.stage_array == "WAKE"])/framerate)
+
+    def _count_movments(self, threshhold):
         mov_dict = dict()
 
         prev_state = False
-        for i in range(len(self.is_moved)):
+        for i in range(len(self.movement_intensity)):
 
-            if self.is_moved[i]:
+            if self.movement_intensity[i] > threshhold:
                 if not prev_state:
                     mov_dict[i] = True
                 prev_state = True
@@ -52,20 +103,21 @@ class SleepState:
                 prev_state = False
         return mov_dict
 
-    def calc_sleep_stage(self):
+    def calc_sleep_stage(self, threshhold):
         epoch_len = self.epoch_len
         # Заполняем массив данных значениями соответствующими небыстрому сну
-        self.stage_array = np.array(["NREM" for i in range(len(self.is_moved))], dtype=str)
+        self.stage_array = np.array(["NREM" for i in range(len(self.movement_intensity))], dtype=str)
 
         # На промежутках
         for i in range(0, self.stage_array.shape[0], epoch_len):
-            left_border = i-epoch_len//2 if (i-epoch_len//2) < 0 else i
-            right_border = i+epoch_len//2 if (i+epoch_len//2) < 0 else i
+            left_border = i-epoch_len//2 if (i-epoch_len//2) > 0 else i
+            right_border = i+epoch_len//2 if (i+epoch_len//2) < len(self.stage_array) else len(self.stage_array)
 
             if not min(self.is_present[left_border:right_border]):
                 self.stage_array[left_border:right_border] = "WAKE"
-
-            elif max(self.is_moved[left_border:right_border]):
+            elif max(self.movement_intensity[left_border:right_border]) > threshhold:
+                self.stage_array[left_border:right_border] = "WAKE"
+            elif max(self.movement_intensity[left_border:right_border]) <= threshhold:
                 self.stage_array[left_border:right_border] = "REM"
 
         return self.stage_array
@@ -93,17 +145,17 @@ class SleepState:
         return self.stage_dict
 
     def _calc_TST(self):
-        return self.sleep_duration_in_sec
+        return self.sleep_duration_in_sec/3600
 
     def _calc_REM(self):
-        return np.sum(self.stage_array[:]=="REM")
+        return (np.sum(self.stage_array[:]=="REM") / len(self.stage_array[self.stage_array != "WAKE"])) * self._calc_TST()
 
     def _calc_N_REM(self):
         vals = self.stage_dict.values()
         return Counter(vals)["REM"]
 
     def _calc_WAKE(self):
-        return np.sum(self.stage_array[:]=="WAKE")
+        return (np.sum(self.stage_array[:]=="WAKE") / len(self.stage_array)) * (self.record_len_in_sec / 3600)
 
     def _calc_N_WAKE(self):
         vals = self.stage_dict.values()
@@ -111,18 +163,22 @@ class SleepState:
 
 
     def _calc_NREM(self):
-        return np.sum(self.stage_array[:]=="NREM")
+        return (np.sum(self.stage_array[:]=="NREM") / len(self.stage_array[self.stage_array != "WAKE"])) * (self.record_len_in_sec / 3600)
 
     def _count_Pose(self):
-        counts, vals = np.unique(self.poses, return_counts=True)
-        return np.max(counts)
+        vals, counts = np.unique(self.poses[self.stage_array != "WAKE"], return_counts=True)
 
-    def get_sleeping_score(self, Am=8.5, Ap=8.5, Aw = 2 , alpha = 1, beta = 1, gamma = 0.5):
+        return np.max(counts)/ len(self.poses[self.stage_array != "WAKE"]) * (self.record_len_in_sec / 3600)
+
+    def get_sleeping_score(self, Am=8.5, Ap=8.5, Aw = 2 , alpha = 1, beta = 0.01, gamma = 0.5):
+        if min(np.asarray(self.stage_array) == "WAKE"):
+            return (0,0,0)
+
         TST = self._calc_TST()
         TR = self._calc_REM()
         TW = self._calc_WAKE()
         TNR = self._calc_NREM()
-        A = self._calc_N_WAKE()
+        A = self._calc_N_WAKE()-2
         NR = self._calc_N_REM()
         P = self._count_Pose() # most_frequent_pose
 
@@ -133,6 +189,7 @@ class SleepState:
 
         scores3 = (TNR/TST)*alpha + 100*beta + P*gamma
         return scores1, scores2, scores3
+
 
 
 

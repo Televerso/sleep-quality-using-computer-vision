@@ -213,14 +213,15 @@ class SleepTranscription:
         return [frame.object_present for frame in self.frame_list]
 
 
-    def detect_motion(self, n=5, threshold : float = 0.01) -> list:
+    def detect_motion(self, n=5) -> list:
         """
         Определяет движения объекта на видеоряде
         :param n: Количество кадров, на протяжении которых производится определение движений
         :param threshold: Доля изменившихся пикселей на кадре, при привышении которой будет зафиксировано движение
         :return:
         """
-        new_pixel_thresh = int(255*self.frame_list[0].image_size[0] * self.frame_list[0].image_size[1] * threshold)
+        pixel_count = int(255*self.frame_list[0].image_size[0] * self.frame_list[0].image_size[1])
+
         self.motion_images_list = list()
         self.motion_detection_list = list()
 
@@ -232,7 +233,7 @@ class SleepTranscription:
             for j in range(0, n_iter):
                 frame |= self.frame_list[i].mask ^ self.frame_list[i-j].mask
             self.motion_images_list.append(frame)
-            self.motion_detection_list.append(np.sum(frame) > new_pixel_thresh)
+            self.motion_detection_list.append(np.sum(frame)/pixel_count)
         return self.motion_detection_list
 
 
@@ -240,9 +241,13 @@ class SleepTranscription:
         sleep_model = SleepPoseClassifyer()
         obj_masks = list()
         for frame in self.frame_list:
-            if frame.object_present:
-                obj_masks.append(bf.get_64pix_mask(frame.mask))
+            obj_masks.append(bf.get_64pix_mask(frame.mask))
         self.pose_list = sleep_model.batch_classify(obj_masks)
+
+        obj_present = self.detect_object_frames()
+        for pose in range(len(self.pose_list)):
+            if not obj_present[pose]:
+                self.pose_list[pose] = -1
         save_frames_list(obj_masks, r"C:\Users\dboga\PycharmProjects\sleep quality using computer vision\Moving vid\Test_64")
         return self.pose_list
 
@@ -262,18 +267,18 @@ class SleepTranscription:
         self.do_ViBe_algorithm()
         self.blur_frames()
         self.detect_object_frames(thresh_object)
-        self.detect_motion(n, thresh_motion)
+        self.detect_motion(n)
         self.classify_poses()
 
         return self
 
 
-    def get_motion_frames(self) -> list:
+    def get_motion_frames(self, threshhold : float) -> list:
         """
         :return: возвращает список кадров, на которых было определено движение объекта
         """
         frames = list()
         for i in range(len(self.motion_detection_list)):
-            if self.motion_detection_list[i] & self.frame_list[i].object_present:
+            if (self.motion_detection_list[i] > threshhold) & self.frame_list[i].object_present:
                 frames.append(self.frame_list[i])
         return frames
