@@ -1,8 +1,11 @@
 import os
+from tkinter import Image
 from typing import Tuple
 
 import cv2
 import numpy as np
+import time
+import PIL
 
 from FrameClass.FrameClass import Frame
 from SleepPoseClassification.SleepPoseClassifyer import SleepPoseClassifyer
@@ -19,6 +22,20 @@ def save_frames_list(frames, path : str):
         img_num += 1
         cv2.imwrite(outfile, frame)
 
+class SimpleObjectDetection:
+    def __init__(self, image):
+        self.background_image = bf.blur(np.asarray(image), 5, 1)
+
+    def detect(self, image, threshold):
+        image = np.asarray(image)
+        image = bf.blur(image, 5, 1)
+
+        image_diff = image.astype(int) - self.background_image.astype(int)
+        image_diff[image_diff < 0] = 0
+        image_diff[image_diff < threshold] = 0
+        image_diff[image_diff >= threshold] = 255
+
+        return image_diff
 
 class SleepTranscription:
     """
@@ -28,6 +45,7 @@ class SleepTranscription:
         self.cap = None
         self.curr_cap_frame = 0
         self.frame_list = list()
+        self.simple_detector = None
 
         self.motion_images_list = list()
         self.motion_detection_list = list()
@@ -99,22 +117,34 @@ class SleepTranscription:
         self.curr_cap_frame = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)-1
 
 
-    def read_cap_frames(self, gap : int = 1):
+    def read_cap_frames(self, gap : int = 1, rotate_param = 0):
         """
         Поочередно считывает кадры видеоряда, заполняя внутренний список
         :param gap: Количество пропускаемых кадров, которые не будут записаны
+        :param rotate_param: -1, 0, 1, 2 - вращение кадров на 90*rotate градусов
         """
+        rotate = None
+        if rotate_param == -1:
+            rotate = cv2.ROTATE_90_COUNTERCLOCKWISE
+        elif rotate_param == 1:
+            rotate = cv2.ROTATE_90_CLOCKWISE
+        elif rotate_param == 2:
+            rotate = cv2.ROTATE_180
+
         ret, frame = self.cap.read()
         i = 0
         while ret:
             if i%gap == 0:
-                frame_obj = Frame(frame, self.curr_cap_frame)
+                frame_obj = None
+                if rotate is None:
+                    frame_obj = Frame(frame, self.curr_cap_frame)
+                else:
+                    frame_obj = Frame(cv2.rotate(frame, rotate), self.curr_cap_frame)
                 self.frame_list.append(frame_obj)
 
             self.curr_cap_frame += 1
             i += 1
             ret, frame = self.cap.read()
-
 
     def save_frames(self, path : str):
         """
@@ -195,19 +225,22 @@ class SleepTranscription:
         samples = vibe.initial_background(self.frame_list[n_of_init_frame].image, N)
         for frame in self.frame_list:
             segMap, samples = vibe.vibe_detection(frame.image, samples, _min, N, R)
-            frame.add_mask(segMap)
+            frame.add_m_mask(segMap)
         return self.frame_list
 
 
-    def detect_object_frames(self, threshold : float = 0.02) -> list:
+    def detect_object_frames(self, threshold_obj : float = 0.02) -> list:
         """
         Помечает кадры, на которых был обнаружен объект
-        :param threshold: Доля пикселей, занимаемых объектом
+        :param threshold_obj: Доля пикселей, занимаемых объектом
         :return: bool-список соответствующий сохраненным кадрам
         """
-        new_pixel_thresh = int(255*self.frame_list[0].image_size[0] * self.frame_list[0].image_size[1] * threshold)
+        new_pixel_thresh = int(255*self.frame_list[0].image_size[0] * self.frame_list[0].image_size[1] * threshold_obj)
+        self.simple_detector = SimpleObjectDetection(self.frame_list[0].image)
 
         for frame in self.frame_list:
+            blurred = bf.blur(frame.image, 5, 1)
+            frame.add_mask(self.simple_detector.detect(frame.image, threshold=40))
             frame.check_object_presence(new_pixel_thresh)
 
         return [frame.object_present for frame in self.frame_list]
@@ -217,7 +250,6 @@ class SleepTranscription:
         """
         Определяет движения объекта на видеоряде
         :param n: Количество кадров, на протяжении которых производится определение движений
-        :param threshold: Доля изменившихся пикселей на кадре, при привышении которой будет зафиксировано движение
         :return:
         """
         pixel_count = int(255*self.frame_list[0].image_size[0] * self.frame_list[0].image_size[1])
@@ -229,9 +261,9 @@ class SleepTranscription:
             n_iter = n
             if i-n_iter < 0:
                 n_iter = i
-            frame = np.zeros_like(self.frame_list[i].mask)
+            frame = np.zeros_like(self.frame_list[i].m_mask)
             for j in range(0, n_iter):
-                frame |= self.frame_list[i].mask ^ self.frame_list[i-j].mask
+                frame |= self.frame_list[i].m_mask ^ self.frame_list[i - j].m_mask
             self.motion_images_list.append(frame)
             self.motion_detection_list.append(np.sum(frame)/pixel_count)
         return self.motion_detection_list
@@ -241,14 +273,14 @@ class SleepTranscription:
         sleep_model = SleepPoseClassifyer()
         obj_masks = list()
         for frame in self.frame_list:
-            obj_masks.append(bf.get_64pix_mask(frame.mask))
+            obj_masks.append(bf.get_64pix_mask(frame.m_mask))
         self.pose_list = sleep_model.batch_classify(obj_masks)
 
         obj_present = self.detect_object_frames()
         for pose in range(len(self.pose_list)):
             if not obj_present[pose]:
                 self.pose_list[pose] = -1
-        save_frames_list(obj_masks, r"C:\Users\dboga\PycharmProjects\sleep quality using computer vision\Moving vid\Test_64")
+        # save_frames_list(obj_masks, r"C:\Users\dboga\PycharmProjects\sleep quality using computer vision\Moving vid\Test_64")
         return self.pose_list
 
 
@@ -264,9 +296,9 @@ class SleepTranscription:
         """
         self.grayscale_frames()
         self.resize_frames(dims)
+        self.detect_object_frames(thresh_object)
         self.do_ViBe_algorithm()
         self.blur_frames()
-        self.detect_object_frames(thresh_object)
         self.detect_motion(n)
         self.classify_poses()
 
@@ -282,3 +314,38 @@ class SleepTranscription:
             if (self.motion_detection_list[i] > threshhold) & self.frame_list[i].object_present:
                 frames.append(self.frame_list[i])
         return frames
+
+    def prosess_frames_timed(self, dims : Tuple[int,int], thresh_object : float, n : int, thresh_motion : float) ->\
+            'SleepTranscription':
+        """
+        Производит полную обработку видеоряда, последовательно вызывая методы класса
+        :param dims: Размерность кадра, к которым должен быть приведен видеоряд
+        :param thresh_object: Доля кадра, которую должен занимать объект для его обнаружения
+        :param n: Глубина поиска движений в кадрах
+        :param thresh_motion: Доля кадра, которую должно занять движение для его фиксации
+        :return:
+        """
+        start = time.time()
+        self.grayscale_frames()
+        self.resize_frames(dims)
+        self.detect_object_frames(thresh_object)
+        end = time.time()
+        print("Preprocessing time = ", (end - start)/len(self.frame_list))
+
+        start = time.time()
+        self.do_ViBe_algorithm()
+        end = time.time()
+        print("ViBe time = ", (end - start)/len(self.frame_list))
+
+        start = time.time()
+        self.blur_frames()
+        self.detect_motion(n)
+        end = time.time()
+        print("Masks processing time = ", (end - start) / len(self.frame_list))
+
+        start = time.time()
+        self.classify_poses()
+        end = time.time()
+        print("Pose classification time = ", (end - start) / len(self.frame_list))
+
+        return self

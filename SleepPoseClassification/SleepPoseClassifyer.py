@@ -81,7 +81,7 @@ class SleepPoseClassifyer:
         self.model.compile(optimizer='rmsprop',loss='sparse_categorical_crossentropy',metrics=[tf.keras.metrics.sparse_categorical_accuracy])
         self.model.fit(np.array(test_image), np.array(test_labels), epochs=1, batch_size=1)
 
-        self.model.load_weights('SleepPoseClassification/SleepNetModelv3_95.weights.h5')
+        self.model.load_weights('SleepPoseClassification/SleepNetModelv4_95.weights.h5')
 
     def batch_classify(self, images):
         return np.argmax(self.model.predict(np.array(images,dtype=np.float32)), axis=-1)

@@ -38,7 +38,6 @@ def get_64pix_mask(image):
         image_64 = np.zeros((64, 64, 3), dtype=np.uint8)
         return image_64
 
-
     x, y, w, h, s = stats[max_area_img[0]]
     cx, cy = x + w // 2, y + h // 2
     w,h = x+w, y+h
@@ -62,7 +61,7 @@ def get_64pix_mask(image):
         if h_new > h: h = h_new
 
 
-    margin = (w+h)//4
+    margin = (w+h)//5
 
     lx = 0 if x-margin<0 else x-margin
     ly = 0 if y-margin<0 else y-margin

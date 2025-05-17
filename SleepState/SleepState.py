@@ -15,7 +15,7 @@ class SleepTime:
         self.minute = int(minute)
         self.second = int(second)
 
-        self.in_seconds = second + minute*60 + hour*3600
+        self.in_seconds = int(second + minute*60 + hour*3600)
 
     def __add__(self, other):
         hour, minute, second, in_seconds = 0,0,0,0
@@ -27,9 +27,9 @@ class SleepTime:
         elif type(other) is int or type(other) is float:
             in_seconds = (other + self.in_seconds) % (3600*24)
 
-            hour = self.in_seconds // 3600
-            minute = (self.in_seconds // 60) % 60
-            second = self.in_seconds % 3600
+            hour = (in_seconds // 3600) % 24
+            minute = (in_seconds // 60) % 60
+            second = (in_seconds % 3600) % 60
         else:
             assert "Wrong datatype!"
 
@@ -45,9 +45,9 @@ class SleepTime:
         elif type(other) is int or type(other) is float:
             in_seconds = (self.in_seconds - other) % (3600*24)
 
-            hour = self.in_seconds // 3600
-            minute = (self.in_seconds // 60) % 60
-            second = self.in_seconds % 3600
+            hour = (in_seconds // 3600) % 24
+            minute = (in_seconds // 60) % 60
+            second = (in_seconds % 3600) % 60
         else:
             assert "Wrong datatype!"
 
@@ -55,14 +55,11 @@ class SleepTime:
 
     def __str__(self):
         res_str = ''
-        res_str += self.hour
+        res_str += str(self.hour)
         res_str += ':'
-        res_str += self.minute
+        res_str += str(self.minute)
         res_str += ':'
-        res_str += self.second
-        res_str += " - ("
-        res_str += self.in_seconds
-        res_str += "s)"
+        res_str += str(self.second)
 
         return res_str
 
@@ -70,7 +67,7 @@ class SleepTime:
         pass
 
 class SleepState:
-    def __init__(self, pose_list, movement_intensity, is_present, starting_time, framerate = 1, epoch_len = 30, movement_threshhold = 0.01):
+    def __init__(self, pose_list, movement_intensity, is_present, starting_time, framerate = 1, epoch_len = 30, movement_threshhold = 0.01, wake_threshhold = 0.1):
         self.movement_intensity = movement_intensity
         self.is_present = is_present
         self.poses = pose_list
@@ -79,10 +76,10 @@ class SleepState:
         self.stage_dict = dict()
         self.epoch_len = epoch_len
 
-        self.starting_time = starting_time
         self.record_len_in_sec = int(len(movement_intensity)/framerate)
+        self.starting_time = starting_time - self.record_len_in_sec
 
-        self.calc_sleep_stage(movement_threshhold)
+        self.calc_sleep_stage(threshhold_min = movement_threshhold, threshhold_max = wake_threshhold)
         self._get_stage_dict()
 
         self.sleep_duration_in_sec = self.record_len_in_sec - int(len(self.stage_array[self.stage_array == "WAKE"])/framerate)
@@ -103,7 +100,7 @@ class SleepState:
                 prev_state = False
         return mov_dict
 
-    def calc_sleep_stage(self, threshhold):
+    def calc_sleep_stage(self, threshhold_min, threshhold_max):
         epoch_len = self.epoch_len
         # Заполняем массив данных значениями соответствующими небыстрому сну
         self.stage_array = np.array(["NREM" for i in range(len(self.movement_intensity))], dtype=str)
@@ -115,9 +112,9 @@ class SleepState:
 
             if not min(self.is_present[left_border:right_border]):
                 self.stage_array[left_border:right_border] = "WAKE"
-            elif max(self.movement_intensity[left_border:right_border]) > threshhold:
+            elif np.sum(self.movement_intensity[left_border:right_border])/len(self.movement_intensity[left_border:right_border]) >= threshhold_max:
                 self.stage_array[left_border:right_border] = "WAKE"
-            elif max(self.movement_intensity[left_border:right_border]) <= threshhold:
+            elif threshhold_max > np.sum(self.movement_intensity[left_border:right_border])/len(self.movement_intensity[left_border:right_border]) > threshhold_min:
                 self.stage_array[left_border:right_border] = "REM"
 
         return self.stage_array
@@ -129,17 +126,20 @@ class SleepState:
 
             if self.stage_array[i] == "WAKE":
                 if prev_state != "WAKE":
-                    self.stage_dict[i] = "WAKE"
+                    time = self.starting_time-(i/len(self.stage_array))*self.record_len_in_sec
+                    self.stage_dict[str(time)] = "WAKE"
                 prev_state = "WAKE"
 
             elif self.stage_array[i] == "REM":
                 if prev_state != "REM":
-                    self.stage_dict[i] = "REM"
+                    time = self.starting_time - (i / len(self.stage_array)) * self.record_len_in_sec
+                    self.stage_dict[str(time)] = "REM"
                 prev_state = "REM"
 
             elif self.stage_array[i] == "NREM":
                 if prev_state != "NREM":
-                    self.stage_dict[i] = "NREM"
+                    time = self.starting_time - (i / len(self.stage_array)) * self.record_len_in_sec
+                    self.stage_dict[str(time)] = "NREM"
                 prev_state = "NREM"
 
         return self.stage_dict
@@ -188,7 +188,16 @@ class SleepState:
         scores2 = (NR+A)/TST
 
         scores3 = (TNR/TST)*alpha + 100*beta + P*gamma
+
+        print('TST = ', TST)
+        print('TR = ', TR)
+        print('TNR = ', TNR)
+        print('TW = ', TW)
+        print('NR = ', NR)
+        print('A = ', A)
+
         return scores1, scores2, scores3
+
 
 
 

@@ -50,8 +50,8 @@ for pose in path_pose:
 
     i = 0
     for item in os.listdir(path):
-        th_low = 105
-        th_high = 135
+        th_low = 95
+        th_high = 145
         for var in range(0,10):
             path_item = os.path.join(path, item)
             image = process_image(path_item,np.random.randint(0,40)-20,1,np.random.randint(th_low,th_high))

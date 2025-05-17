@@ -19,6 +19,7 @@ class FrameStatus(Flag):
     GRAY = auto()
     SHRINKED = auto()
     MASKED = auto()
+    M_MASKED = auto()
     BLURRED = auto()
     OBJECT_CHECKED = auto()
 
@@ -28,6 +29,7 @@ class Frame:
     """
     def __init__(self, frame : ndarray, fr_num : int):
         self._object_present = False
+        self._m_mask = None
         self._mask = None
         self._image = frame
         self._fr_num = fr_num
@@ -92,6 +94,16 @@ class Frame:
         return self._image.shape[0:2]
 
     @property
+    def m_mask(self) -> ndarray:
+        """
+        :return: Возвращает маску объекта на изображении.
+        Если маска еще не задавалась, возвращает копию изображения.
+        """
+        if self._m_mask is None:
+            return np.copy(self._image)
+        return self._m_mask
+
+    @property
     def mask(self) -> ndarray:
         """
         :return: Возвращает маску объекта на изображении.
@@ -145,6 +157,10 @@ class Frame:
             self._mask = bf.blur(self._mask, 7, 2)
             self.__status |= FrameStatus.BLURRED
 
+        if self.__status & FrameStatus.M_MASKED:
+            self._m_mask = bf.blur(self._m_mask, 7, 2)
+            self.__status |= FrameStatus.BLURRED
+
         return self
 
     def add_mask(self, mask : ndarray) -> 'Frame':
@@ -157,13 +173,23 @@ class Frame:
         self.__status |= FrameStatus.MASKED
         return self
 
+    def add_m_mask(self, mask : ndarray) -> 'Frame':
+        """
+        Привязывает к кадру движений объекта, содержащегося на кадре, и устанавливает флаг M_MASKED
+        :param mask: Маска объекта
+        :return: self
+        """
+        self._m_mask = mask
+        self.__status |= FrameStatus.M_MASKED
+        return self
+
     def count_new_pixels(self) -> int:
         """
         Производит подсчет белых пикселей маски
         :return: количество значимых пикселей; -1 если маска не задана
         """
-        if self.__status & FrameStatus.MASKED:
-            return np.sum(self.mask)
+        if self.__status & FrameStatus.M_MASKED:
+            return np.sum(self.m_mask)
         else:
             return -1
 
@@ -175,7 +201,7 @@ class Frame:
         """
         if self.__status & FrameStatus.MASKED:
             self.__status |= FrameStatus.OBJECT_CHECKED
-            self._object_present = np.sum(self.mask) > thresh
+            self._object_present = np.sum(self._mask) > thresh
             return self._object_present
         else:
             return False
