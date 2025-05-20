@@ -74,10 +74,10 @@ class SleepState:
 
         self.stage_array = np.array((len(movement_intensity)))
         self.stage_dict = dict()
-        self.epoch_len = epoch_len
+        self.epoch_len = int(epoch_len*framerate)
 
+        self.starting_time = starting_time
         self.record_len_in_sec = int(len(movement_intensity)/framerate)
-        self.starting_time = starting_time - self.record_len_in_sec
 
         self.calc_sleep_stage(threshhold_min = movement_threshhold, threshhold_max = wake_threshhold)
         self._get_stage_dict()
@@ -122,33 +122,35 @@ class SleepState:
     def _get_stage_dict(self):
 
         prev_state = ""
+        self.stage_dict[str(self.starting_time-1)] = 'START'
         for i in range(self.stage_array.shape[0]):
 
             if self.stage_array[i] == "WAKE":
                 if prev_state != "WAKE":
-                    time = self.starting_time-(i/len(self.stage_array))*self.record_len_in_sec
+                    time = self.starting_time + (i/len(self.stage_array))*self.record_len_in_sec
                     self.stage_dict[str(time)] = "WAKE"
                 prev_state = "WAKE"
 
             elif self.stage_array[i] == "REM":
                 if prev_state != "REM":
-                    time = self.starting_time - (i / len(self.stage_array)) * self.record_len_in_sec
+                    time = self.starting_time + (i / len(self.stage_array)) * self.record_len_in_sec
                     self.stage_dict[str(time)] = "REM"
                 prev_state = "REM"
 
             elif self.stage_array[i] == "NREM":
                 if prev_state != "NREM":
-                    time = self.starting_time - (i / len(self.stage_array)) * self.record_len_in_sec
+                    time = self.starting_time + (i / len(self.stage_array)) * self.record_len_in_sec
                     self.stage_dict[str(time)] = "NREM"
                 prev_state = "NREM"
-
+        self.stage_dict[str(self.starting_time + self.record_len_in_sec)] = 'END'
         return self.stage_dict
 
     def _calc_TST(self):
+
         return self.sleep_duration_in_sec/3600
 
     def _calc_REM(self):
-        return (np.sum(self.stage_array[:]=="REM") / len(self.stage_array[self.stage_array != "WAKE"])) * self._calc_TST()
+        return (np.sum(self.stage_array[:]=="REM") / np.sum(self.stage_array != "WAKE")) * self._calc_TST()
 
     def _calc_N_REM(self):
         vals = self.stage_dict.values()
@@ -163,27 +165,27 @@ class SleepState:
 
 
     def _calc_NREM(self):
-        return (np.sum(self.stage_array[:]=="NREM") / len(self.stage_array[self.stage_array != "WAKE"])) * (self.record_len_in_sec / 3600)
+        return (np.sum(self.stage_array[:]=="NREM") / np.sum(self.stage_array != "WAKE")) * self._calc_TST()
 
     def _count_Pose(self):
         vals, counts = np.unique(self.poses[self.stage_array != "WAKE"], return_counts=True)
 
-        return np.max(counts)/ len(self.poses[self.stage_array != "WAKE"]) * (self.record_len_in_sec / 3600)
+        return (np.max(counts) / np.sum(self.stage_array != "WAKE")) * self._calc_TST()
 
     def get_sleeping_score(self, Am=8.5, Ap=8.5, Aw = 2 , alpha = 1, beta = 0.01, gamma = 0.5):
-        if min(np.asarray(self.stage_array) == "WAKE"):
+        if np.min(np.asarray(self.stage_array) == "WAKE"):
             return (0,0,0)
 
         TST = self._calc_TST()
         TR = self._calc_REM()
         TW = self._calc_WAKE()
         TNR = self._calc_NREM()
-        A = self._calc_N_WAKE()-2
+        A = self._calc_N_WAKE()-1
         NR = self._calc_N_REM()
         P = self._count_Pose() # most_frequent_pose
 
         a_val = (Am/Ap)**2
-        scores1 = (TST*a_val + TNR*a_val*1.5 + TR*a_val*0.5 - TW*a_val*0.5 - A/Aw)*Ap
+        scores1 = (TST*a_val + TNR*a_val*0.5 + TR*a_val*0.5 - TW*a_val*0.5 - A/Aw)*Ap
 
         scores2 = (NR+A)/TST
 

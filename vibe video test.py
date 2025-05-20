@@ -15,7 +15,7 @@ class SimpleObjectDetection:
 
     def detect(self, image, threshhold):
         image = np.asarray(image)
-        object_image = np.abs(self.background_image - image)
+        object_image = np.abs(int(self.background_image) - int(image))
         object_image[object_image < threshhold] = 0
         object_image[object_image >= threshhold] = 255
 

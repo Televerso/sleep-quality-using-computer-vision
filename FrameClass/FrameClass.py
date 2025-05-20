@@ -15,8 +15,7 @@ class FrameStatus(Flag):
     RGB, GRAY, SHRINKED, MASKED, BLURRED, OBJECT_CHECKED
     Используется во внутренних функциях
     """
-    RGB = 0
-    GRAY = auto()
+    RGB = auto()
     SHRINKED = auto()
     MASKED = auto()
     M_MASKED = auto()
@@ -52,8 +51,6 @@ class Frame:
         obj_str += ", Status: ("
         if self.__status & FrameStatus.RGB:
             obj_str += " RGB"
-        elif self.__status & FrameStatus.GRAY:
-            obj_str += " GRAY"
         elif self.__status & FrameStatus.SHRINKED:
             obj_str += " SHRINKED"
         elif self.__status & FrameStatus.BLURRED:
@@ -120,14 +117,6 @@ class Frame:
         """
         return self._object_present
 
-    def to_grayscale(self) -> 'Frame':
-        """
-        Конвертирует изображение в оттенки серого, устанавливает флаг GRAY
-        :return: self
-        """
-        self._image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-        self.__status |= FrameStatus.GRAY
-        return self
 
     def resize(self, dims : Tuple[int, int]) -> 'Frame':
         """
@@ -141,6 +130,10 @@ class Frame:
         self._image = bf.resize(self._image, dims[1], dims[0])
         if self.__status & FrameStatus.MASKED:
             self._mask = bf.resize(self._mask, dims[1], dims[0])
+
+        if self.__status & FrameStatus.M_MASKED:
+            self._m_mask = bf.resize(self._m_mask, dims[1], dims[0])
+
         return self
 
     def median_blur(self, blur_image : bool = False):

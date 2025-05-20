@@ -24,18 +24,34 @@ def save_frames_list(frames, path : str):
 
 class SimpleObjectDetection:
     def __init__(self, image):
-        self.background_image = bf.blur(np.asarray(image), 5, 1)
+        self.background_image_ch1 = bf.blur(np.asarray(image[:,:,0]), 5, 1)
+        self.background_image_ch2 = bf.blur(np.asarray(image[:,:,1]), 5, 1)
+        self.background_image_ch3 = bf.blur(np.asarray(image[:,:,2]), 5, 1)
 
     def detect(self, image, threshold):
-        image = np.asarray(image)
-        image = bf.blur(image, 5, 1)
+        image_ch1 = np.asarray(image[:,:,0])
+        image_ch2 = np.asarray(image[:,:,1])
+        image_ch3 = np.asarray(image[:,:,2])
 
-        image_diff = image.astype(int) - self.background_image.astype(int)
-        image_diff[image_diff < 0] = 0
-        image_diff[image_diff < threshold] = 0
-        image_diff[image_diff >= threshold] = 255
+        image_ch1 = bf.blur(image_ch1, 5, 1)
+        image_ch2 = bf.blur(image_ch2, 5, 1)
+        image_ch3 = bf.blur(image_ch3, 5, 1)
 
-        return image_diff
+        image_diff_ch1 = np.abs(image_ch1.astype(int) - self.background_image_ch1.astype(int))
+        image_diff_ch2 = np.abs(image_ch2.astype(int) - self.background_image_ch2.astype(int))
+        image_diff_ch3 = np.abs(image_ch3.astype(int) - self.background_image_ch3.astype(int))
+
+
+        image_diff_ch1[image_diff_ch1 < threshold] = 0
+        image_diff_ch2[image_diff_ch2 < threshold] = 0
+        image_diff_ch3[image_diff_ch3 < threshold] = 0
+        image_diff_ch1[image_diff_ch1 >= threshold] = 255
+        image_diff_ch2[image_diff_ch2 >= threshold] = 255
+        image_diff_ch3[image_diff_ch3 >= threshold] = 255
+
+        image_diff = image_diff_ch1 | image_diff_ch2 | image_diff_ch3
+
+        return image_diff.astype('uint8')
 
 class SleepTranscription:
     """
@@ -71,13 +87,15 @@ class SleepTranscription:
             return 0
 
 
-    def add_next_frame(self):
+    def add_next_frame(self,  dims : Tuple[int,int]):
         """
         Считывает текущий кадр и переходит к следующему, заполняя внутренний список
         :return: Считанный кадр; -1 при ошибке чтения
         """
         ret, frame = self.cap.read()
         if ret:
+            frame = bf.resize(frame, dims[0], dims[1])
+
             frame_obj = Frame(frame, self.curr_cap_frame)
             self.curr_cap_frame += 1
             self.frame_list.append(frame_obj)
@@ -117,7 +135,7 @@ class SleepTranscription:
         self.curr_cap_frame = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)-1
 
 
-    def read_cap_frames(self, gap : int = 1, rotate_param = 0):
+    def read_cap_frames(self, dims : Tuple[int,int], gap : int = 1, rotate_param = 0):
         """
         Поочередно считывает кадры видеоряда, заполняя внутренний список
         :param gap: Количество пропускаемых кадров, которые не будут записаны
@@ -135,11 +153,14 @@ class SleepTranscription:
         i = 0
         while ret:
             if i%gap == 0:
+                frame = bf.resize(frame, dims[0], dims[1])
+
                 frame_obj = None
                 if rotate is None:
                     frame_obj = Frame(frame, self.curr_cap_frame)
                 else:
                     frame_obj = Frame(cv2.rotate(frame, rotate), self.curr_cap_frame)
+
                 self.frame_list.append(frame_obj)
 
             self.curr_cap_frame += 1
@@ -179,16 +200,6 @@ class SleepTranscription:
         self.cap = None
 
 
-    def grayscale_frames(self) -> list:
-        """
-        Приводит все записанные кадры к оттенкам серого
-        :return: Список сохраненных кадров
-        """
-        for frame in self.frame_list:
-            frame.to_grayscale()
-        return self.frame_list
-
-
     def resize_frames(self, dims : Tuple[int,int]) -> list:
         """
         Преобразует все записанные кадры к указанному размеру
@@ -210,7 +221,7 @@ class SleepTranscription:
         return self.frame_list
 
 
-    def do_ViBe_algorithm(self, params : tuple = (20,20,2,16), n_of_init_frame : int = 0) -> list:
+    def do_ViBe_algorithm(self, params : tuple = (20,40,2,16), n_of_init_frame : int = 0) -> list:
         """
         Применяет алгоритм обнаружения движений ViBe ко всем сохраненным кадрам видеоряда
         :param params: кортеж параметров алгоритма (N, R, _min, phai)
@@ -222,10 +233,19 @@ class SleepTranscription:
         _min = params[2]
         phai = params[3]
 
-        samples = vibe.initial_background(self.frame_list[n_of_init_frame].image, N)
-        for frame in self.frame_list:
-            segMap, samples = vibe.vibe_detection(frame.image, samples, _min, N, R)
-            frame.add_m_mask(segMap)
+
+        samples_ch1 = vibe.initial_background(self.frame_list[n_of_init_frame].image[:,:,0], N)
+        samples_ch2 = vibe.initial_background(self.frame_list[n_of_init_frame].image[:,:,1], N)
+        samples_ch3 = vibe.initial_background(self.frame_list[n_of_init_frame].image[:,:,2], N)
+        for i in range(len(self.frame_list)):
+            segMap_ch1, samples_ch1 = vibe.vibe_detection(self.frame_list[i].image[:, : ,0], samples_ch1, _min, N, R)
+            segMap_ch2, samples_ch2 = vibe.vibe_detection(self.frame_list[i].image[:, :, 1], samples_ch2, _min, N, R)
+            segMap_ch3, samples_ch3 = vibe.vibe_detection(self.frame_list[i].image[:, :, 2], samples_ch3, _min, N, R)
+
+            segMap = segMap_ch1 | segMap_ch2 | segMap_ch3
+
+            self.frame_list[i].add_m_mask(segMap)
+
         return self.frame_list
 
 
@@ -238,10 +258,10 @@ class SleepTranscription:
         new_pixel_thresh = int(255*self.frame_list[0].image_size[0] * self.frame_list[0].image_size[1] * threshold_obj)
         self.simple_detector = SimpleObjectDetection(self.frame_list[0].image)
 
-        for frame in self.frame_list:
-            blurred = bf.blur(frame.image, 5, 1)
-            frame.add_mask(self.simple_detector.detect(frame.image, threshold=40))
-            frame.check_object_presence(new_pixel_thresh)
+        for i in range(len(self.frame_list)):
+
+            self.frame_list[i].add_mask(self.simple_detector.detect(self.frame_list[i].image, threshold=40))
+            self.frame_list[i].check_object_presence(new_pixel_thresh)
 
         return [frame.object_present for frame in self.frame_list]
 
@@ -294,8 +314,6 @@ class SleepTranscription:
         :param thresh_motion: Доля кадра, которую должно занять движение для его фиксации
         :return:
         """
-        self.grayscale_frames()
-        self.resize_frames(dims)
         self.detect_object_frames(thresh_object)
         self.do_ViBe_algorithm()
         self.blur_frames()
@@ -315,7 +333,7 @@ class SleepTranscription:
                 frames.append(self.frame_list[i])
         return frames
 
-    def prosess_frames_timed(self, dims : Tuple[int,int], thresh_object : float, n : int, thresh_motion : float) ->\
+    def prosess_frames_timed(self, thresh_object : float, n : int, thresh_motion : float) ->\
             'SleepTranscription':
         """
         Производит полную обработку видеоряда, последовательно вызывая методы класса
@@ -326,8 +344,6 @@ class SleepTranscription:
         :return:
         """
         start = time.time()
-        self.grayscale_frames()
-        self.resize_frames(dims)
         self.detect_object_frames(thresh_object)
         end = time.time()
         print("Preprocessing time = ", (end - start)/len(self.frame_list))
